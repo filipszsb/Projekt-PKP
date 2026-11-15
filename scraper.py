@@ -25,15 +25,16 @@ def main():
     text = html_lib.unescape(re.sub(r"<[^>]+>", " | ", clean))
     text = re.sub(r"\s+", " ", text)
 
+    # Dopasowanie wpisów z hop.kolej.live: POCIĄG | STACJA_A -> STACJA_B | XXX min (ze strzałką -> lub kropką ·)
     pattern = re.compile(
-        r"([A-ZŁŚŻŹĆŃ]{1,5}(?:/[A-ZŁŚŻŹĆŃ]{1,5})?\s+\d+(?:/\d+)*\s*[A-ZŁŚŻŹĆŃ0-9\s-]*?)\s*\|\s*([^|]+?->[^|]+?)\s*\|\s*(\d+)\s*min"
+        r"([A-ZŁŚŻŹĆŃ]{1,5}(?:/[A-ZŁŚŻŹĆŃ]{1,5})?\s+\d+(?:/\d+)*[^\n|]{0,35}?)\s*\|\s*([^|]+?(?:->|→|·)[^|]+?)\s*\|\s*(\d+)\s*min"
     )
 
     wiersze = []
     seen = set()
     for m in pattern.finditer(text):
-        pociag = m.group(1).strip(" |")
-        relacja = m.group(2).strip(" |")
+        pociag = m.group(1).strip(" |·")
+        relacja = m.group(2).strip(" |·")
         opoznienie = int(m.group(3))
         klucz = (pociag, relacja, opoznienie)
         if klucz not in seen and opoznienie > 0:
