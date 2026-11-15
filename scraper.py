@@ -1,5 +1,6 @@
 import csv
 import os
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from playwright.sync_api import sync_playwright
@@ -19,49 +20,48 @@ def main():
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.goto(URL, wait_until="networkidle", timeout=60000)
-        page.wait_for_timeout(2500)
+        page.goto(URL, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(4000)
 
-        # Zamknięcie banera cookies, jeśli zasłania dół strony
+        # Zamknięcie cookies
         try:
             cookie_btn = page.locator("button:has-text('Akceptuj'), button:has-text('Zgadzam')").first
             if cookie_btn.is_visible(timeout=2000):
                 cookie_btn.click()
-                page.wait_for_timeout(800)
+                page.wait_for_timeout(1000)
         except Exception:
             pass
 
         page_num = 1
-        while page_num <= 50:  # bezpieczny limit stron
-            # Pobieramy wszystkie wiersze zawierające "min" z aktualnej podstrony
-            rows = page.locator("tr, .table-row, [class*='row']").all()
-            for row in rows:
-                lines = [line.strip() for line in row.inner_text().splitlines() if line.strip()]
-                joined = " | ".join(lines)
-                # Filtrujemy nagłówki i śmieci — zostawiamy tylko realne wiersze pociągów
-                if "min" in joined.lower() and 3 <= len(lines) <= 8:
-                    scraped_rows.append([now_pl, page_num, joined])
+        while page_num <= 50:
+            # Szukamy wszystkich bloków zawierających czas opóźnienia (np. "21 min")
+            candidates = page.locator("div, tr, li").all()
+            for el in candidates:
+                try:
+                    txt = el.inner_text().strip()
+                except Exception:
+                    continue
+                if re.search(r"\b\d+\s*min\b", txt, re.IGNORECASE):
+                    lines = [line.strip() for line in txt.splitlines() if line.strip()]
+                    if 2 <= len(lines) <= 7:
+                        joined = " | ".join(lines)
+                        scraped_rows.append([now_pl, page_num, joined])
 
-            # Szukamy przycisku "Dalej" widocznego na screenie
             next_btn = page.locator("a:has-text('Dalej'), button:has-text('Dalej')").first
             if next_btn.count() == 0 or not next_btn.is_visible():
                 break
 
-            # Sprawdzamy, czy przycisk "Dalej" nie jest zablokowany (ostatnia strona)
             classes = (next_btn.get_attribute("class") or "").lower()
-            is_disabled = next_btn.get_attribute("disabled") is not None or "disabled" in classes
-            if is_disabled:
+            if next_btn.get_attribute("disabled") is not None or "disabled" in classes:
                 break
 
-            # Zapamiętujemy pierwszy wiersz przed kliknięciem, żeby upewnić się, że strona się przeładowała
-            first_before = scraped_rows[-1][2] if scraped_rows else ""
             next_btn.click()
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(3000)
             page_num += 1
 
         browser.close()
 
-    # Deduplikacja wierszy z jednego przebiegu
+    # Deduplikacja po treści wiersza
     unique_rows = []
     seen = set()
     for r in scraped_rows:
@@ -69,15 +69,15 @@ def main():
             seen.add(r[2])
             unique_rows.append(r)
 
-    if unique_rows:
-        with open(CSV_FILE, mode="a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f, delimiter=";")
-            if not file_exists:
-                writer.writerow(["timestamp", "strona", "dane_surowe"])
+    # Zawsze tworzymy/dopiszemy do CSV, żeby GitHub Actions nie sypał błędem gdy brak opóźnień
+    with open(CSV_FILE, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=";")
+        if not file_exists:
+            writer.writerow(["timestamp", "strona", "dane_surowe"])
+        if unique_rows:
             writer.writerows(unique_rows)
-        print(f"[{now_pl}] Przeskanowano {page_num} stron, zapisano {len(unique_rows)} pociągów.")
-    else:
-        print(f"[{now_pl}] Brak danych do zapisu.")
+
+    print(f"[{now_pl}] Stron: {page_num}, zapisano wierszy: {len(unique_rows)}")
 
 if __name__ == "__main__":
     main()
