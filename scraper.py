@@ -21,7 +21,7 @@ def main():
         )
         page = context.new_page()
         page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(4000)
+        page.wait_for_timeout(5000)
 
         # Zamknięcie cookies
         try:
@@ -34,16 +34,17 @@ def main():
 
         page_num = 1
         while page_num <= 50:
-            # Szukamy wszystkich bloków zawierających czas opóźnienia (np. "21 min")
-            candidates = page.locator("div, tr, li").all()
-            for el in candidates:
+            # Bierzemy bezpośrednio wiersze tabeli (tr) lub kontenery pojedynczego pociągu
+            rows = page.locator("tbody tr, .delay-item, .train-row, [class*='row']").all()
+            for el in rows:
                 try:
                     txt = el.inner_text().strip()
                 except Exception:
                     continue
-                if re.search(r"\b\d+\s*min\b", txt, re.IGNORECASE):
+                # Musi zawierać np. "21 min" i nie być całym kontenerem strony (limit znaków < 350)
+                if re.search(r"\b\d+\s*min\b", txt, re.IGNORECASE) and len(txt) < 350:
                     lines = [line.strip() for line in txt.splitlines() if line.strip()]
-                    if 2 <= len(lines) <= 7:
+                    if len(lines) >= 2:
                         joined = " | ".join(lines)
                         scraped_rows.append([now_pl, page_num, joined])
 
@@ -61,7 +62,6 @@ def main():
 
         browser.close()
 
-    # Deduplikacja po treści wiersza
     unique_rows = []
     seen = set()
     for r in scraped_rows:
@@ -69,10 +69,17 @@ def main():
             seen.add(r[2])
             unique_rows.append(r)
 
-    # Zawsze tworzymy/dopiszemy do CSV, żeby GitHub Actions nie sypał błędem gdy brak opóźnień
-    with open(CSV_FILE, mode="a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f, delimiter=";")
-        if not file_exists:
+    # Nadpisujemy stary jedno-linijkowy nagłówek, jeśli plik ma <= 1 linię
+    write_header = True
+    if file_exists:
+        with open(CSV_FILE, "r", encoding="utf-8") as f:
+            if sum(1 for _ in f) > 1:
+                write_header = False
+
+    mode = "w" if write_header else "a"
+    with open(CSV_FILE, mode=mode, newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=",")
+        if write_header:
             writer.writerow(["timestamp", "strona", "dane_surowe"])
         if unique_rows:
             writer.writerows(unique_rows)
@@ -80,4 +87,5 @@ def main():
     print(f"[{now_pl}] Stron: {page_num}, zapisano wierszy: {len(unique_rows)}")
 
 if __name__ == "__main__":
+    main()
     main()
