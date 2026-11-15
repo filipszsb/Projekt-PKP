@@ -1,86 +1,27 @@
-import csv
-import json
-import os
+import re
 import urllib.request
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
-CSV_FILE = "opoznienia_pp.csv"
-
-STACJE = [
-    ("Wrocław Główny", "wroclaw-glowny"),
-    ("Poznań Główny", "poznan-glowny"),
-    ("Katowice", "katowice"),
-    ("Bielsko-Biała Główna", "bielsko-biala-glowna"),
-    ("Warszawa Centralna", "warszawa-centralna"),
-    ("Kraków Główny", "krakow-glowny"),
-    ("Gdańsk Główny", "gdansk-glowny"),
-    ("Szczecin Główny", "szczecin-glowny"),
-]
-
+URL = "https://kolej.live/"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    "Accept": "application/json",
-    "X-Requested-With": "XMLHttpRequest",
-    "X-KOLEO-Version": "1",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pl-PL,pl;q=0.9",
 }
 
-def fetch_json(url):
-    req = urllib.request.Request(url, headers=HEADERS)
+try:
+    req = urllib.request.Request(URL, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=20) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-def main():
-    now_pl = datetime.now(ZoneInfo("Europe/Warsaw")).strftime("%Y-%m-%d %H:%M")
-    wiersze = []
-
-    for nazwa_stacji, slug in STACJE:
-        try:
-            stacja_info = fetch_json(f"https://koleo.pl/api/v2/main/stations/by_slug/{slug}")
-            station_id = stacja_info.get("id")
-            if not station_id:
-                print(f"[BŁĄD] {nazwa_stacji}: brak ID w odpowiedzi {stacja_info}")
-                continue
-
-            dane = fetch_json(f"https://koleo.pl/api/v2/main/arrivals/{station_id}")
-            przyjazdy = dane if isinstance(dane, list) else dane.get("arrivals", [])
-            for p in przyjazdy:
-                opoznienie = p.get("delay") or p.get("arrival_delay") or 0
-                if isinstance(opoznienie, (int, float)) and opoznienie > 0:
-                    nr = p.get("train_number") or p.get("number") or "brak"
-                    nazwa = p.get("train_name") or p.get("name") or ""
-                    przewoznik = p.get("brand") or p.get("carrier") or ""
-                    skad = p.get("origin_name") or p.get("origin") or ""
-                    planowo = p.get("arrival_time") or p.get("time") or ""
-                    wiersze.append([
-                        now_pl,
-                        nazwa_stacji,
-                        przewoznik,
-                        f"{nr} {nazwa}".strip(),
-                        skad,
-                        planowo,
-                        int(opoznienie)
-                    ])
-            print(f"[OK] {nazwa_stacji} (ID={station_id}): sprawdzono ({len(przyjazdy)} pozycji)")
-        except Exception as e:
-            print(f"[BŁĄD] {nazwa_stacji}: {e}")
-
-    file_exists = os.path.isfile(CSV_FILE)
-    write_header = not file_exists
-    if file_exists:
-        with open(CSV_FILE, "r", encoding="utf-8") as f:
-            if sum(1 for _ in f) <= 1:
-                write_header = True
-
-    mode = "w" if write_header else "a"
-    with open(CSV_FILE, mode=mode, newline="", encoding="utf-8") as f:
-        writer = csv.writer(f, delimiter=",")
-        if write_header:
-            writer.writerow(["timestamp", "stacja", "przewoznik", "pociag", "relacja_z", "planowy_przyjazd", "opoznienie_min"])
-        if wiersze:
-            writer.writerows(wiersze)
-
-    print(f"[{now_pl}] Zapisano opóźnionych pociągów: {len(wiersze)}")
-
-if __name__ == "__main__":
-    main()
+        html = resp.read().decode("utf-8", errors="ignore")
+        print("STATUS:", resp.status, "| DŁUGOŚĆ HTML:", len(html))
+        
+        title = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+        print("TYTUŁ:", title.group(1).strip() if title else "brak")
+        
+        # Szukamy ścieżek do skryptów JS i ewentualnych adresów API w kodzie strony
+        scripts = re.findall(r'src=["\']([^"\']+\.js[^"\']*)["\']', html)
+        apis = re.findall(r'https?://[^"\'\s<>]+(?:api|delay|opozn|train|plk|socket|ws)[^"\'\s<>]*', html, re.IGNORECASE)
+        print("SKRYPTY JS:", scripts[:10])
+        print("ZNALEZIONE ADRESY:", list(set(apis))[:15])
+        print("FRAGMENT TEKSTU:", " ".join(re.sub(r"<[^>]+>", " ", html).split())[:400])
+except Exception as e:
+    print("BŁĄD POŁĄCZENIA:", e)
