@@ -21,10 +21,10 @@ STACJE = [
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
     "Accept": "application/json",
+    "X-Requested-With": "XMLHttpRequest",
 }
 
-def pobierz_tablice(slug):
-    url = f"https://koleo.pl/api/v2/main/station_boards/{slug}/arrivals"
+def fetch_json(url):
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=20) as resp:
         return json.loads(resp.read().decode("utf-8"))
@@ -35,7 +35,13 @@ def main():
 
     for nazwa_stacji, slug in STACJE:
         try:
-            dane = pobierz_tablice(slug)
+            stacja_info = fetch_json(f"https://koleo.pl/api/v2/main/stations/by_slug/{slug}")
+            station_id = stacja_info.get("id")
+            if not station_id:
+                print(f"[BŁĄD] {nazwa_stacji}: brak ID w odpowiedzi {stacja_info}")
+                continue
+
+            dane = fetch_json(f"https://koleo.pl/api/v2/main/arrivals/{station_id}")
             przyjazdy = dane if isinstance(dane, list) else dane.get("arrivals", [])
             for p in przyjazdy:
                 opoznienie = p.get("delay") or p.get("arrival_delay") or 0
@@ -54,7 +60,7 @@ def main():
                         planowo,
                         int(opoznienie)
                     ])
-            print(f"[OK] {nazwa_stacji}: sprawdzono ({len(przyjazdy)} pozycji)")
+            print(f"[OK] {nazwa_stacji} (ID={station_id}): sprawdzono ({len(przyjazdy)} pozycji)")
         except Exception as e:
             print(f"[BŁĄD] {nazwa_stacji}: {e}")
 
