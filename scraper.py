@@ -14,34 +14,41 @@ def main():
     scraped_rows = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"]
+        )
         context = browser.new_context(
             locale="pl-PL",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            viewport={"width": 1366, "height": 900},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(5000)
+        page.goto(URL, wait_until="networkidle", timeout=60000)
+        page.wait_for_timeout(6000)
 
         # Zamknięcie cookies
         try:
             cookie_btn = page.locator("button:has-text('Akceptuj'), button:has-text('Zgadzam')").first
             if cookie_btn.is_visible(timeout=2000):
                 cookie_btn.click()
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(1500)
         except Exception:
             pass
 
+        # Diagnostyka do logów Actions
+        print("TYTUŁ STRONY:", page.title())
+        body_preview = " ".join(page.locator("body").inner_text().split())[:600]
+        print("PODGLĄD TEKSTU:", body_preview)
+
         page_num = 1
         while page_num <= 50:
-            # Bierzemy bezpośrednio wiersze tabeli (tr) lub kontenery pojedynczego pociągu
-            rows = page.locator("tbody tr, .delay-item, .train-row, [class*='row']").all()
+            rows = page.locator("tbody tr, .delay-item, .train-row, [class*='row'], [class*='item']").all()
             for el in rows:
                 try:
                     txt = el.inner_text().strip()
                 except Exception:
                     continue
-                # Musi zawierać np. "21 min" i nie być całym kontenerem strony (limit znaków < 350)
                 if re.search(r"\b\d+\s*min\b", txt, re.IGNORECASE) and len(txt) < 350:
                     lines = [line.strip() for line in txt.splitlines() if line.strip()]
                     if len(lines) >= 2:
@@ -69,7 +76,6 @@ def main():
             seen.add(r[2])
             unique_rows.append(r)
 
-    # Nadpisujemy stary jedno-linijkowy nagłówek, jeśli plik ma <= 1 linię
     write_header = True
     if file_exists:
         with open(CSV_FILE, "r", encoding="utf-8") as f:
@@ -87,5 +93,4 @@ def main():
     print(f"[{now_pl}] Stron: {page_num}, zapisano wierszy: {len(unique_rows)}")
 
 if __name__ == "__main__":
-    main()
     main()
