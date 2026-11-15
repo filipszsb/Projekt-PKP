@@ -1,1 +1,1 @@
-timestamp,stacja,przewoznik,pociag,relacja_z,planowy_przyjazd,opoznienie_min
+timestamp,pociag,relacja,opoznienie_min
