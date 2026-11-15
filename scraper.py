@@ -25,21 +25,22 @@ def main():
     text = html_lib.unescape(re.sub(r"<[^>]+>", " | ", clean))
     text = re.sub(r"\s+", " ", text)
 
-    # Dopasowanie wpisów z hop.kolej.live: POCIĄG | STACJA_A -> STACJA_B | XXX min (ze strzałką -> lub kropką ·)
-    pattern = re.compile(
-        r"([A-ZŁŚŻŹĆŃ]{1,5}(?:/[A-ZŁŚŻŹĆŃ]{1,5})?\s+\d+(?:/\d+)*[^\n|]{0,35}?)\s*\|\s*([^|]+?(?:->|→|·)[^|]+?)\s*\|\s*(\d+)\s*min"
-    )
+    # Dzielimy tekst po każdym wystąpieniu "... XXX min" i bierzemy dwa poprzedzające segmenty (pociąg i relację)
+    parts = [p.strip(" |·") for p in text.split("|") if p.strip(" |·")]
 
     wiersze = []
     seen = set()
-    for m in pattern.finditer(text):
-        pociag = m.group(1).strip(" |·")
-        relacja = m.group(2).strip(" |·")
-        opoznienie = int(m.group(3))
-        klucz = (pociag, relacja, opoznienie)
-        if klucz not in seen and opoznienie > 0:
-            seen.add(klucz)
-            wiersze.append([now_pl, pociag, relacja, opoznienie])
+    for i, part in enumerate(parts):
+        m = re.fullmatch(r"(\d+)\s*min", part)
+        if m and i >= 2:
+            opoznienie = int(m.group(1))
+            relacja = parts[i - 1]
+            pociag = parts[i - 2]
+            if opoznienie > 0 and ("->" in relacja or "→" in relacja or "·" in relacja or len(relacja) > 4):
+                klucz = (pociag, relacja, opoznienie)
+                if klucz not in seen:
+                    seen.add(klucz)
+                    wiersze.append([now_pl, pociag, relacja, opoznienie])
 
     file_exists = os.path.isfile(CSV_FILE)
     write_header = not file_exists
