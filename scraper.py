@@ -4,17 +4,25 @@ import urllib.request
 JS_URL = "https://kolej.live/assets/index-G6hWfbFK.js"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://kolej.live/",
+    "Origin": "https://kolej.live",
 }
 
 req = urllib.request.Request(JS_URL, headers=HEADERS)
 with urllib.request.urlopen(req, timeout=20) as resp:
     js = resp.read().decode("utf-8", errors="ignore")
-    print("DŁUGOŚĆ JS:", len(js))
-    
-    # Szukamy wszystkich adresów URL oraz ścieżek /api/ lub fetch() w paczce JS
-    urls = set(re.findall(r'https?://[a-zA-Z0-9._-]+(?:/[a-zA-Z0-9._~:/?#\[\]@!$&\'()*+,;=-]*)?', js))
-    rel_paths = set(re.findall(r'["\'](/api/[a-zA-Z0-9._/-]+|/v[0-9]/[a-zA-Z0-9._/-]+)["\']', js))
-    
-    filtered_urls = [u for u in urls if not any(x in u for x in ["w3.org", "reactjs.org", "github.com", "google", "silktide", "cloudflare", "jsdelivr"])]
-    print("ZEWNĘTRZNE URL-E:", filtered_urls[:25])
-    print("ŚCIEŻKI RELATYWNE:", list(rel_paths)[:25])
+
+# Wyciągamy kontekst wokół hop.kolej.live w kodzie JS
+matches = [m.start() for m in re.finditer(r"hop\.kolej\.live", js)]
+for idx in matches[:5]:
+    print("KONTEKST JS:", js[max(0, idx - 60):min(len(js), idx + 180)])
+
+# Odpytujemy główne warianty endpointu hop.kolej.live
+for test_url in ["https://hop.kolej.live/", "https://hop.kolej.live/trains", "https://hop.kolej.live/delays", "https://hop.kolej.live/api/trains"]:
+    try:
+        r = urllib.request.urlopen(urllib.request.Request(test_url, headers=HEADERS), timeout=15)
+        body = r.read().decode("utf-8", errors="ignore")
+        print(f"TEST {test_url} -> STATUS {r.status} | DŁUGOŚĆ {len(body)} | START: {body[:220]}")
+    except Exception as e:
+        print(f"TEST {test_url} -> {e}")
