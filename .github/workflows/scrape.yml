@@ -20,12 +20,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Zainstaluj biblioteki i Chromium
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium
-          playwright install-deps chromium
-
       - name: Odpal scraper
         run: python scraper.py
 
@@ -34,4 +28,5 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add opoznienia_pp.csv
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Aktualizacja opóźnień PKP" && git push)
+          git diff --quiet && git diff --staged --quiet || git commit -m "Aktualizacja opóźnień PKP"
+          git push
